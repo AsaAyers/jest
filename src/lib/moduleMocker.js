@@ -47,6 +47,48 @@ function getType(ref) {
   return null;
 }
 
+function PlainConstructor() {}
+var plainObject = new PlainConstructor();
+/**
+ * methods on ES6 classes are not enumerable, so they can't
+ * be found with a simple `for (var slot in ...) {`
+ *
+ * scan will return an object with the same shape you would
+ * get with `for ... in` except the non-enumerable methods
+ * are included.
+ */
+ function scan(obj) {
+   var fakeObj = {};
+   var prop;
+   for (prop in obj) {
+     fakeObj[prop] = true;
+   }
+   if (obj) {
+     var props = [];
+     var tmp = obj;
+     var descriptor;
+
+     do {
+       props = Object.getOwnPropertyNames(tmp);
+
+       for (var i = 0; i < props.length; i++) {
+         prop = props[i];
+         // Skip methods that exist on all objects.
+         if (!plainObject[prop]) {
+           descriptor = Object.getOwnPropertyDescriptor(tmp, prop);
+           if (descriptor
+             && !descriptor.enumerable
+             && typeof descriptor.value === 'function') {
+
+               fakeObj[prop] = true;
+             }
+           }
+         }
+       } while ((tmp = Object.getPrototypeOf(tmp)));
+     }
+     return fakeObj;
+   };
+
 function makeComponent(metadata) {
   switch (metadata.type) {
     case 'object':
@@ -79,7 +121,7 @@ function makeComponent(metadata) {
         calls.push(Array.prototype.slice.call(arguments));
         if (this instanceof f) {
           // This is probably being called as a constructor
-          for (var slot in prototype) {
+          for (var slot in scan(prototype)) {
             // Copy prototype methods to the instance to make
             // it easier to interact with mock instance call and
             // return values
@@ -202,7 +244,7 @@ function generateFromMetadata(_metadata) {
       mock.__TCmeta = metadata.__TCmeta;
     }
 
-    for (var slot in metadata.members) {
+    for (var slot in scan(metadata.members)) {
       var slotMetadata = metadata.members[slot];
       if (slotMetadata.ref !== null && slotMetadata.ref !== undefined) {
         callbacks.push(getRefCallback(slot, slotMetadata.ref));
@@ -275,7 +317,7 @@ function _getMetadata(component, _refs) {
   // Leave arrays alone
   if (type !== 'array') {
     if (type !== 'undefined') {
-      for (var slot in component) {
+      for (var slot in scan(component)) {
         if (slot.charAt(0) === '_' ||
             (type === 'function' && component._isMockFunction &&
              slot.match(/^mock/))) {
@@ -311,7 +353,7 @@ function removeUnusedRefs(metadata) {
   function visit(metadata, f) {
     f(metadata);
     if (metadata.members) {
-      for (var slot in metadata.members) {
+      for (var slot in scan(metadata.members)) {
         visit(metadata.members[slot], f);
       }
     }
